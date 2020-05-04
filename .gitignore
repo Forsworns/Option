@@ -1,0 +1,8 @@
+# python cache
+__pycache__
+*/__pycache__
+
+#trainning data
+data
+results
+tb_logs
