@@ -4,111 +4,124 @@ import gym
 from gym import spaces
 import pandas as pd
 import numpy as np
-from utils.BS from bsformula
+import sys
+
+from utils.BS import bsformula
+from policy.delta import DeltaHedge
 
 sys.path.append('../')
 
-MAX_ACCOUNT_BALANCE = 0
-INITIAL_ACCOUNT_BALANCE = 0
+MAX_INT = 2147483647
 
 class HedgeEnv(gym.Env):
     metadata = {'render.modes': ['human']}
 
-    def __init__(self, df, strike=0.1, prior=False):
+    def __init__(self, df, df_rate, cfg):
         super(HedgeEnv, self).__init__()
         self.df = df
-        self.reward_range = (0, MAX_ACCOUNT_BALANCE)
+        self.steps = df.shape[0]
+        self.df_rate = df_rate
+        self.skip = cfg.skip
+        self.b_prior = cfg.b_prior
+        if self.b_prior:
+            self.delta_hedger = DeltaHedge()
+        self.b_random = cfg.b_random
+        self.reset()
+        self.reward_range = (-MAX_INT, self.amount*self.option_price)
+        # -1 is to sold out the stock or fund
         self.action_space = spaces.Box(low=np.array(
-            [0, 0]), high=np.array([3, 1]), dtype=np.float16)
+            [-1]), high=np.array([1]), dtype=np.float16)
         self.observation_space = spaces.Box(
-            low=0, high=1, shape=(6, 6), dtype=np.float16)
+            low=-MAX_INT, high=MAX_INT, shape=(self.skip+1, 6), dtype=np.float32)
+
+    def reset(self):
+        self.T = random.randint(30, 180)  # option expiration date
+        # share of the target assets
+        self.amount = random.randint(1, 10) # x10000
+        self.beginning_step = random.randint(
+            self.skip, self.df.shape[0]-self.T-1)
+        self.current_step = self.beginning_step
+        self.t = 0
+        self.sigma = self.df.loc[self.beginning_step:
+                                 self.beginning_step+self.T-1, 'close'].std()
+        start = self.df.loc[self.beginning_step, 'Date']
+        end = self.df.loc[self.beginning_step+self.T, 'Date']
+        l_b = self.df_rate['Date'].map(lambda x: x >= start)
+        h_b = self.df_rate['Date'].map(lambda x: x < end)
+        self.rate = self.df_rate.where(l_b & h_b)['3M'].mean()
+        # print("sigma",self.sigma)
+        # print("rate",self.rate)
+        self.s_0 = self.df.at[self.beginning_step, 'close']
+        self.s_T = self.df.at[self.beginning_step+self.T-1, 'close']
+        # strike price of the option
+        self.s_X = self.s_0 + random.randint(-4, 4)*0.05
+        self.option_price, _, _ = bsformula(
+            "call", self.s_0, self.s_X, self.rate, self.T, self.sigma)
+        self.balance = self.amount*self.option_price
+        self.hold = 0
+        return self._next_observation()
+
+    def restart(self):
+        # similar to the reset, but do not resample the env, only initialize
+        self.beginning_step = random.randint(
+            self.skip, self.df.shape[0]-self.T-1)
+        self.current_step = self.beginning_step
+        self.t = 0
+        self.balance = self.amount*self.option_price
+        self.hold = 0
 
     def step(self, action):
-        self._take_action(action)
-        self.current_step += 1
-        if self.current_step < 6:
-            self.current_step = 6
-        delay_modifier = (self.current_step / MAX_STEPS)
-        reward = self.balance * delay_modifier
-        done = self.net_worth <= 0
+        if self.current_step + self.skip < self.T:
+            self._take_action(action)
+            delay_modifier = (self.current_step / self.T)
+            reward = self.balance * delay_modifier
+            done = False
+        else:
+            # at the option exercise date
+            self.s_t = self.df.at[self.beginning_step+self.T-1, 'close']
+            if self.s_t >= self.s_X:  # the call option won't be carried
+                self.balance += self.s_t*self.hold
+                self.hold = 0
+            reward = self.balance
+            done = True
+            self.final_reward = reward
+        reward /= self.amount
+        self.current_step += self.skip
+        self.t = self.t + self.skip
         obs = self._next_observation()
         return obs, reward, done, {}
 
-    def reset(self):
-        self.option_time = random.randint(30,180)
-        self.option_amount = random.randint(10000,100000)
-        self.option_strike = random.randint(-4,4)*0.05
-        self.balance = INITIAL_ACCOUNT_BALANCE
-        self.max_net_worth = INITIAL_ACCOUNT_BALANCE
-        self.share_held = 0
-        self.average_share_cost = 0
-        self.total_shares_sold = 0
-        self.total_sales_value = 0
-        self.current_step = random.randint(
-            0, len(self, df.loc[:, 'Open'].values))
-        return self._nextObservation()
-
-    def _nextObservation(self):
-        frame = np.array([
-            self.df.loc[self.current_step-5: self.current_step,
-                        'Open'].values / MAX_SHARE_PRICE,
-            self.df.loc[self.current_step-5: self.current_step,
-                        'High'].values / MAX_SHARE_PRICE,
-            self.df.loc[self.current_step-5: self.current_step,
-                        'Low'].values / MAX_SHARE_PRICE,
-            self.df.loc[self.current_step-5: self.current_step,
-                        'Close'].values / MAX_SHARE_PRICE,
-            self.df.loc[self.current_step-5: self.current_step,
-                        'Volume'].values / MAX_NUM_SHARES,
-        ])
-        obs = np.append(frame, [[
-            self.balance / MAX_ACCOUNT_BALANCE,
-            self.max_net_worth / MAX_ACCOUNT_BALANCE,
-            self.shares_held / MAX_NUM_SHARES,
-            self.cost_basis / MAX_SHARE_PRICE,
-            self.total_shares_sold / MAX_NUM_SHARES,
-            self.total_sales_value / (MAX_NUM_SHARES * MAX_SHARE_PRICE),
-        ]], axis=0)
-        
-        self.option_price = bsformula()
-
+    def _next_observation(self):
+        obs_df = self.df.loc[self.current_step-self.skip+1: self.current_step,
+                             ['close', 'open', 'high', 'low', 'amount', 'rate']]
+        obs = np.array(obs_df)
+        obs = np.append(obs, np.array([[
+            self.balance,
+            self.s_0,
+            self.s_X,
+            self.T-self.t,
+            self.amount,
+            self.hold,
+        ]]), axis=0)
+        # print(obs)
         return obs
 
     def _take_action(self, action):
-        current_price = random.uniform(
-            self.df.loc[self.current_step, "Open"], self.df.loc[self.current_step, "Close"])
-        action_type = action[0]
-        amount = action[1]
-        if action_type < 1:
-            total_possible = int(self.balance / current_price)
-            shares_bought = int(total_possible * amount)
-            prev_cost = self.cost_basis * self.shares_held
-            additional_cost = shares_bought * current_price
-            self.balance -= additional_cost
-            self.cost_basis = (
-                prev_cost + additional_cost) / (self.shares_held + shares_bought)
-            self.shares_held += shares_bought
-        elif action_type < 2:
-            shares_sold = int(self.shares_held * amount)
-            self.balance += shares_sold * current_price
-            self.shares_held -= shares_sold
-            self.total_shares_sold += shares_sold
-            self.total_sales_value += shares_sold * current_price
-        self.net_worth = self.balance + self.shares_held * current_price
-        if self.net_worth > self.max_net_worth:
-            self.max_net_worth = self.net_worth
-        if self.shares_held == 0:
-            self.cost_basis = 0
+        self.s_t = self.df.at[self.current_step, 'close']
+        transaction = action[0]*self.amount
+        # use delta hedging as a human prior (then it becomes a residual learning problem)
+        if self.b_prior:
+            delta_action = self.delta_hedger.make_decision(self)
+            transaction += delta_action[0]
+        self.hold += transaction
+        self.balance -= transaction*self.s_t
 
     def render(self, mode='human', close=False):
-        current_price = self.df.loc[self.current_step, "Open"]
-        net_worth = self.balance + self.share_held*current_price
-        profit = net_worth - INITIAL_ACCOUNT_BALANCE
-        print(f'Step: {self.current_step}')
-        print(f'Balance: {self.balance}')
+        current_price = self.df.at[self.current_step, 'close']
+        date = self.df.at[self.current_step, 'Date']
+        print(f'Step: {self.current_step-self.beginning_step}:{self.T}')
+        print(f'Date: {date}')
+        print(f'Price: {current_price}')
+        print(f'strike price:{self.s_X}')
         print(
-            f'Shares held: {self.shares_held} (Total sold: {self.total_shares_sold})')
-        print(
-            f'Avg cost for held shares: {self.average_share_cost} (Total sales value: {self.total_sales_value})')
-        print(f'Net worth: {net_worth} (Max net worth) {self.max_net_worth}')
-        print(f'Profit: {profit}')
+            f'Shares held: {self.hold}')
