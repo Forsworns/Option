@@ -17,16 +17,11 @@ def covered(env):
     amount = env.get_attr('amount')[0] 
     option_price = env.get_attr('option_price')[0] 
     rate = env.get_attr('rate')[0] 
-    T = env.get_attr('T')[0] 
-    print("--------------")
-    print(amount*option_price)
-    print(amount*(s_X-s_0))
-    print(rate)
-    print(amount*s_0*((1+rate)**T-1))
+    T = env.get_attr('T')[0]/365.0 
     if s_T > s_X:
-        return amount*option_price + amount*(s_X-s_0) - amount*s_0*((1+rate)**T-1)
+        return amount*option_price*((1+rate)**T) + amount*(s_X-s_0) - amount*s_0*((1+rate)**T-1)
     else:
-        return amount*option_price + amount*(s_T-s_0) - amount*s_0*((1+rate)**T-1)
+        return amount*option_price*((1+rate)**T) + amount*(s_T-s_0) - amount*s_0*((1+rate)**T-1)
 
 
 if __name__ == "__main__":

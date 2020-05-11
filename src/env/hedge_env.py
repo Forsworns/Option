@@ -23,6 +23,7 @@ class HedgeEnv(gym.Env):
         self.df_rate = df_rate
         self.skip = cfg.skip
         self.b_prior = cfg.b_prior
+        self.b_rl = True
         if self.b_prior:
             self.delta_hedger = DeltaHedge()
         self.b_random = cfg.b_random
@@ -37,7 +38,7 @@ class HedgeEnv(gym.Env):
     def reset(self):
         self.T = random.randint(30, 180)  # option expiration date
         # share of the target assets
-        self.amount = random.randint(1, 10) # x10000
+        self.amount = random.randint(1, 10) # \times 10000
         self.beginning_step = random.randint(
             self.skip, self.df.shape[0]-self.T-1)
         self.current_step = self.beginning_step
@@ -107,12 +108,15 @@ class HedgeEnv(gym.Env):
         return obs
 
     def _take_action(self, action):
-        self.s_t = self.df.at[self.current_step, 'close']
-        transaction = action[0]*self.amount
-        # use delta hedging as a human prior (then it becomes a residual learning problem)
-        if self.b_prior:
-            delta_action = self.delta_hedger.make_decision(self)
-            transaction += delta_action[0]
+        self.s_t = self.df.at[self.current_step, 'close'] # note in rl, the delta hedger view different price 
+        if self.b_rl:
+            transaction = action[0]*self.amount
+            # use delta hedging as a human prior (then it becomes a residual learning problem)
+            if self.b_prior:
+                delta_action = self.delta_hedger.make_decision(self)
+                transaction += delta_action[0][0]
+        else:
+            transaction = action[0]
         self.hold += transaction
         self.balance -= transaction*self.s_t
 

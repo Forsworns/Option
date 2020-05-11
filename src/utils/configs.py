@@ -33,10 +33,11 @@ def parse():
     parser_args.cfg_file = root_dir + 'results/%d' % (t)
     parser_args.model_dir = root_dir + 'results/model/%d' % (t)
     parser_args.log_dir = root_dir + 'results/log/%d' % (t)
-    if not os.path.exists(parser_args.model_dir):
-        os.makedirs(parser_args.model_dir)
-    if not os.path.exists(parser_args.log_dir):
-        os.makedirs(parser_args.log_dir)
+    if not parser_args.test:
+        if not os.path.exists(parser_args.model_dir):
+            os.makedirs(parser_args.model_dir)
+        if not os.path.exists(parser_args.log_dir):
+            os.makedirs(parser_args.log_dir)
     return parser_args
 
 

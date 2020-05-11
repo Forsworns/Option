@@ -17,7 +17,7 @@ from policy.delta import DeltaHedge
 
 
 # 先用BS定期权价，假设只卖出这一种看涨（认购）期权，行权价=现价+strike
-TIME = 1589117264
+TIME = 1589206830
 EPISODE = 8000
 TEST_MODEL = f"../results/model/{TIME}/rl_model_{EPISODE}_steps.zip"
 CFG_FILE = f"./.results/{TIME}.json"
@@ -42,6 +42,7 @@ if __name__ == "__main__":
         delta = DeltaHedge()
         for i in range(cfg.test_times):
             # rl
+            env.set_attr("b_rl",True)
             obs = env.reset()  # every time, create a new transaction
             naked_returns.append(naked(env))
             covered_returns.append(covered(env))
@@ -51,6 +52,7 @@ if __name__ == "__main__":
                 # env.render()
             rl_returns.append(env.get_attr('final_reward')[0])
             env.env_method('restart')  # only trace back to the initial state
+            env.set_attr("b_rl",False)
             # delta
             for i in range(T):
                 action = delta.make_decision(env)
