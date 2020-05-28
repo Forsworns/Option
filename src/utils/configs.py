@@ -14,9 +14,9 @@ def parse():
     parser.add_argument('--test', type=bool, default=False)
     parser.add_argument('--b_prior', type=bool, default=False) # whether use delta hedge as a prior
     parser.add_argument('--b_random', type=bool, default=False) # whether randomly extract data
-    parser.add_argument('--timestep', type=int, default=10000)
+    parser.add_argument('--timestep', type=int, default=100000)
     parser.add_argument('--test_size', type=int, default=244)  # days to test
-    parser.add_argument('--test_times', type=int, default=5)
+    parser.add_argument('--test_times', type=int, default=10)
     parser.add_argument('--skip', type=int, default=5) # for every `skip` days, take an action
     parser.add_argument('--data_file', type=str,
                         default=None)  # stock or index prices

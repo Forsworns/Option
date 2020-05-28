@@ -57,7 +57,7 @@ class HedgeEnv(gym.Env):
         # strike price of the option
         self.s_X = self.s_0 + random.randint(-4, 4)*0.05
         self.option_price, _, _ = bsformula(
-            "call", self.s_0, self.s_X, self.rate, self.T, self.sigma)
+            "call", self.s_0, self.s_X, self.rate, self.T/365.0, self.sigma)
         self.balance = self.amount*self.option_price
         self.hold = 0
         return self._next_observation()

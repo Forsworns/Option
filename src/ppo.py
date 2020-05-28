@@ -17,8 +17,10 @@ from policy.delta import DeltaHedge
 
 
 # 先用BS定期权价，假设只卖出这一种看涨（认购）期权，行权价=现价+strike
-TIME = 1589206830
-EPISODE = 8000
+TIME = 1590580349 # plain
+TIME = 1590584161 # prior
+EPISODE = 90000
+# TEST_MODEL = f"../results/model/{TIME}/best_model.zip"
 TEST_MODEL = f"../results/model/{TIME}/rl_model_{EPISODE}_steps.zip"
 CFG_FILE = f"./.results/{TIME}.json"
 
@@ -70,9 +72,9 @@ if __name__ == "__main__":
         env = DummyVecEnv([lambda: HedgeEnv(df_train, df_rate, cfg)])
         T = env.get_attr('T')[0]
         checkpoint_callback = CheckpointCallback(
-            save_freq=1000, save_path=cfg.model_dir)
+            save_freq=cfg.timestep/10, save_path=cfg.model_dir)
         eval_callback = EvalCallback(env, best_model_save_path=cfg.model_dir,
-                                     log_path=cfg.log_dir, eval_freq=500, deterministic=True, render=False)
+                                     log_path=cfg.log_dir, eval_freq=cfg.timestep/10, deterministic=True, render=False)
         model = PPO2(MlpPolicy, env, verbose=1)
         model.learn(total_timesteps=cfg.timestep, callback=[
                     checkpoint_callback, eval_callback])
